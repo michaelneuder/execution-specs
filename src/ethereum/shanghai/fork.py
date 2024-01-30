@@ -174,6 +174,8 @@ def state_transition(chain: BlockChain, block: Block) -> None:
         block_logs_bloom,
         state,
         withdrawals_root,
+        inclusion_list_summary_root,
+        inclusion_list_exclusions_root,
     ) = apply_body(
         chain.state,
         get_last_256_block_hashes(chain),
@@ -186,6 +188,8 @@ def state_transition(chain: BlockChain, block: Block) -> None:
         block.transactions,
         chain.chain_id,
         block.withdrawals,
+        block.inclusion_list_summary,
+        block.inclusion_list_exclusions,
     )
     ensure(gas_used == block.header.gas_used, InvalidBlock)
     ensure(transactions_root == block.header.transactions_root, InvalidBlock)
@@ -193,6 +197,8 @@ def state_transition(chain: BlockChain, block: Block) -> None:
     ensure(receipt_root == block.header.receipt_root, InvalidBlock)
     ensure(block_logs_bloom == block.header.bloom, InvalidBlock)
     ensure(withdrawals_root == block.header.withdrawals_root, InvalidBlock)
+    ensure(inclusion_list_summary_root == block.header.inclusion_list_summary_root, InvalidBlock)
+    ensure(inclusion_list_exclusions_root == block.header.inclusion_list_exclusions_root, InvalidBlock)
 
     chain.blocks.append(block)
     if len(chain.blocks) > 255:
@@ -411,7 +417,9 @@ def apply_body(
     transactions: Tuple[Union[LegacyTransaction, Bytes], ...],
     chain_id: U64,
     withdrawals: Tuple[Withdrawal, ...],
-) -> Tuple[Uint, Root, Root, Bloom, State, Root]:
+    inclusion_list_summary: Tuple[InclusionListSummaryEntry, ...],
+    inclusion_list_exclusions: Tuple[Uint, ...],
+) -> Tuple[Uint, Root, Root, Bloom, State, Root, Root, Root]:
     """
     Executes a block.
 
