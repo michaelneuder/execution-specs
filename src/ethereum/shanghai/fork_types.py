@@ -221,7 +221,6 @@ class Header:
     base_fee_per_gas: Uint
     withdrawals_root: Root
     inclusion_list_summary_root: Root     # [New in EIP7547]
-    inclusion_list_exclusions_root: Root  # [New in EIP7547]
 
 
 @slotted_freezable
@@ -236,7 +235,6 @@ class Block:
     ommers: Tuple[Header, ...]
     withdrawals: Tuple[Withdrawal, ...]
     inclusion_list_summary: Tuple[InclusionListSummaryEntry, ...]  # [New in EIP7547]
-    inclusion_list_exclusions: Tuple[Uint, ...]                    # [New in EIP7547]
 
 
 @slotted_freezable

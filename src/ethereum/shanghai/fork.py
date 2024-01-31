@@ -46,6 +46,7 @@ from .fork_types import (
     Withdrawal,
     decode_transaction,
     encode_transaction,
+    InclusionListSummaryEntry
 )
 from .state import (
     State,
@@ -164,9 +165,12 @@ def state_transition(chain: BlockChain, block: Block) -> None:
     block :
         Block to apply to `chain`.
     """
-    parent_header = chain.blocks[-1].header
-    validate_header(block.header, parent_header)
+    parent = chain.blocks[-1]
+    validate_header(block.header, parent.header)
     ensure(block.ommers == (), InvalidBlock)
+    parent_transactions_addresses = [decode_transaction(tx).address for tx in parent.transactions]
+    inclusion_list_summary = [entry for entry in block.inclusion_list_summary 
+                              if entry.address not in parent_transactions_addresses]
     (
         gas_used,
         transactions_root,
@@ -186,8 +190,7 @@ def state_transition(chain: BlockChain, block: Block) -> None:
         block.transactions,
         chain.chain_id,
         block.withdrawals,
-        block.inclusion_list_summary,
-        block.inclusion_list_exclusions,
+        inclusion_list_summary,
     )
     ensure(gas_used == block.header.gas_used, InvalidBlock)
     ensure(transactions_root == block.header.transactions_root, InvalidBlock)
@@ -414,7 +417,6 @@ def apply_body(
     chain_id: U64,
     withdrawals: Tuple[Withdrawal, ...],
     inclusion_list_summary: Tuple[InclusionListSummaryEntry, ...],
-    inclusion_list_exclusions: Tuple[Uint, ...],
 ) -> Tuple[Uint, Root, Root, Bloom, State, Root, Root, Root]:
     """
     Executes a block.
@@ -472,14 +474,9 @@ def apply_body(
 
     # Calculate the additional gas added by the inclusion list and construct
     # a map of addresses required.
-    curr_exclusion_idx = 0
     inclusion_list_gas = 0
     inclusion_list_addrs = {}
-    for i, entry in enumerate(inclusion_list_summary):
-        # Ignore the transaction if it is in the exclusion list.
-        if i == inclusion_list_exclusions[curr_exclusion_idx]:
-            curr_exclusion_idx += 1
-            continue
+    for entry in enumerate(inclusion_list_summary):
         inclusion_list_gas += entry.gas_limit
         inclusion_list_addrs[entry.address] = False
 
@@ -1012,3 +1009,5 @@ def check_gas_limit(gas_limit: Uint, parent_gas_limit: Uint) -> bool:
         return False
 
     return True
+
+
