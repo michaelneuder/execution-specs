@@ -174,8 +174,6 @@ def state_transition(chain: BlockChain, block: Block) -> None:
         block_logs_bloom,
         state,
         withdrawals_root,
-        inclusion_list_summary_root,
-        inclusion_list_exclusions_root,
     ) = apply_body(
         chain.state,
         get_last_256_block_hashes(chain),
@@ -197,8 +195,6 @@ def state_transition(chain: BlockChain, block: Block) -> None:
     ensure(receipt_root == block.header.receipt_root, InvalidBlock)
     ensure(block_logs_bloom == block.header.bloom, InvalidBlock)
     ensure(withdrawals_root == block.header.withdrawals_root, InvalidBlock)
-    ensure(inclusion_list_summary_root == block.header.inclusion_list_summary_root, InvalidBlock)
-    ensure(inclusion_list_exclusions_root == block.header.inclusion_list_exclusions_root, InvalidBlock)
 
     chain.blocks.append(block)
     if len(chain.blocks) > 255:
