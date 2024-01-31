@@ -189,7 +189,7 @@ class Withdrawal:
 @dataclass
 class InclusionListSummaryEntry:
     """
-    Inclusion list entries  that have been validated on the consensus layer.
+    Inclusion list entries that have been validated on the consensus layer.
     """
 
     address: Address

@@ -473,7 +473,22 @@ def apply_body(
     state : `ethereum.fork_types.State`
         State after all transactions have been executed.
     """
-    gas_available = block_gas_limit
+
+    # Calculate the additional gas added by the inclusion list and construct
+    # a map of addresses required.
+    curr_exclusion_idx = 0
+    inclusion_list_gas = 0
+    inclusion_list_addrs = {}
+    for i, entry in enumerate(inclusion_list_summary):
+        # Ignore the transaction if it is in the exclusion list.
+        if i == inclusion_list_exclusions[curr_exclusion_idx]:
+            curr_exclusion_idx += 1
+            continue
+        inclusion_list_gas += entry.gas_limit
+        inclusion_list_addrs[entry.address] = False
+
+    gas_available = block_gas_limit + inclusion_list_gas
+
     transactions_trie: Trie[
         Bytes, Optional[Union[Bytes, LegacyTransaction]]
     ] = Trie(secured=False, default=None)
@@ -493,6 +508,15 @@ def apply_body(
         sender_address, effective_gas_price = check_transaction(
             tx, base_fee_per_gas, gas_available, chain_id
         )
+
+        # Try-except to make address checking O(1).
+        try:
+            # If the sending address is in the inclusion list entries.
+            if inclusion_list_addrs[sender_address] is False:
+                inclusion_list_addrs[sender_address] = True
+        # Ignore if the sender_address is not in the inclusion list.
+        except KeyError:
+            pass
 
         env = vm.Environment(
             caller=sender_address,
@@ -536,6 +560,11 @@ def apply_body(
 
         if account_exists_and_is_empty(state, wd.address):
             destroy_account(state, wd.address)
+
+    # If inclusion list addresses are not included, the block is invalid.
+    for entry in inclusion_list_addrs:
+        if inclusion_list_addrs[entry] is False:
+            raise InvalidBlock
 
     return (
         block_gas_used,
