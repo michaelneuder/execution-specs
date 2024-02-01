@@ -474,11 +474,8 @@ def apply_body(
 
     # Calculate the additional gas added by the inclusion list and construct
     # a map of addresses required.
-    inclusion_list_gas = 0
-    inclusion_list_addrs = {}
-    for entry in enumerate(inclusion_list_summary):
-        inclusion_list_gas += entry.gas_limit
-        inclusion_list_addrs[entry.address] = False
+    inclusion_list_gas = sum(entry.gas_limit for entry in inclusion_list_summary)
+    inclusion_list_addresses = {entry.address: False for entry in inclusion_list_summary}
 
     gas_available = block_gas_limit + inclusion_list_gas
 
@@ -502,14 +499,10 @@ def apply_body(
             tx, base_fee_per_gas, gas_available, chain_id
         )
 
-        # Try-except to make address checking O(1).
-        try:
-            # If the sending address is in the inclusion list entries.
-            if inclusion_list_addrs[sender_address] is False:
-                inclusion_list_addrs[sender_address] = True
-        # Ignore if the sender_address is not in the inclusion list.
-        except KeyError:
-            pass
+        if sender_address in inclusion_list_addresses:
+            # Mark this address as satisfied
+            inclusion_list_addresses[sender_address] = True
+    
 
         env = vm.Environment(
             caller=sender_address,
@@ -554,9 +547,9 @@ def apply_body(
         if account_exists_and_is_empty(state, wd.address):
             destroy_account(state, wd.address)
 
-    # If inclusion list addresses are not included, the block is invalid.
-    for entry in inclusion_list_addrs:
-        if inclusion_list_addrs[entry] is False:
+    # If any inclusion list addresses are not satisfied, the block is invalid.
+    for entry in inclusion_list_addresses:
+        if inclusion_list_addresses[entry] is False:
             raise InvalidBlock
 
     return (
