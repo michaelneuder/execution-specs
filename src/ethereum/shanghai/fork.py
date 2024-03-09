@@ -172,11 +172,9 @@ def state_transition(chain: BlockChain, block: Block) -> None:
     block :
         Block to apply to `chain`.
     """
-    validate_header(block.header, parent.header)
+    parent_header = chain.blocks[-1].header
+    validate_header(block.header, parent_header)
     ensure(block.ommers == (), InvalidBlock)
-    parent_transactions_addresses = [decode_transaction(tx).address for tx in parent.transactions]
-    inclusion_list_summary = [entry for entry in block.inclusion_list_summary 
-                              if entry.address not in parent_transactions_addresses]
     (
         gas_used,
         transactions_root,
@@ -196,7 +194,7 @@ def state_transition(chain: BlockChain, block: Block) -> None:
         block.transactions,
         chain.chain_id,
         block.withdrawals,
-        inclusion_list_summary,
+        block.inclusion_list_summary,
     )
     ensure(gas_used == block.header.gas_used, InvalidBlock)
     ensure(transactions_root == block.header.transactions_root, InvalidBlock)
