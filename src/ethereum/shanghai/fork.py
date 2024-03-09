@@ -150,7 +150,7 @@ def get_last_256_block_hashes(chain: BlockChain) -> List[Hash32]:
     return recent_block_hashes
 
 
-def state_transition(chain: BlockChain, parent, block: Block) -> None:
+def state_transition(chain: BlockChain, block: Block) -> None:
     """
     Attempts to apply a block to an existing block chain.
 
