@@ -69,6 +69,7 @@ BASE_FEE_MAX_CHANGE_DENOMINATOR = 8
 ELASTICITY_MULTIPLIER = 2
 GAS_LIMIT_ADJUSTMENT_FACTOR = 1024
 GAS_LIMIT_MINIMUM = 5000
+INCLUSION_LIST_GAS = 3000000 # 3mm gas for the IL
 EMPTY_OMMER_HASH = keccak256(rlp.encode([]))
 SYSTEM_ADDRESS = hex_to_address("0xfffffffffffffffffffffffffffffffffffffffe")
 PARENT_TRANSACTIONS_ADDRESSES_ADDRESS = hex_to_address(
@@ -497,12 +498,11 @@ def apply_body(
     # Filter out IL addresses already included in the parent
     inclusion_list_summary = [entry for entry in inclusion_list_summary 
                               if entry.address not in parent_transactions_addresses]
-    # Calculate the additional gas added by the inclusion list and construct
-    # a map of addresses required.
-    inclusion_list_gas = sum(entry.gas_limit for entry in inclusion_list_summary)
+    # Construct a map of addresses required.
     inclusion_list_addresses = {entry.address: False for entry in inclusion_list_summary}
 
-    gas_available = block_gas_limit + inclusion_list_gas
+    gas_available = block_gas_limit
+    il_gas_available = INCLUSION_LIST_GAS
 
     transactions_trie: Trie[
         Bytes, Optional[Union[Bytes, LegacyTransaction]]
@@ -526,11 +526,6 @@ def apply_body(
             tx, base_fee_per_gas, gas_available, chain_id
         )
 
-        if sender_address in inclusion_list_addresses:
-            # Mark this address as satisfied
-            inclusion_list_addresses[sender_address] = True
-    
-
         env = vm.Environment(
             caller=sender_address,
             origin=sender_address,
@@ -548,7 +543,17 @@ def apply_body(
         )
 
         gas_used, logs, error = process_transaction(env, tx)
-        gas_available -= gas_used
+
+        if sender_address in inclusion_list_addresses:
+            # Mark this address as satisfied
+            inclusion_list_addresses[sender_address] = True
+            # Subtract gas used in the IL transaction.
+            il_gas_available -= gas_used
+            if il_gas_available < 0:
+                raise InvalidBlock
+        else:
+            # Otherwise subtract from main gas limit of the block.
+            gas_available -= gas_used
 
         receipt = make_receipt(
             tx, error, (block_gas_limit - gas_available), logs

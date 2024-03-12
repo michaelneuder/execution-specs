@@ -193,8 +193,6 @@ class InclusionListSummaryEntry:
     """
 
     address: Address
-    gas_limit: Uint
-
 
 @slotted_freezable
 @dataclass
