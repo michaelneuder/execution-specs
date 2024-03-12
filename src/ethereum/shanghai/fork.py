@@ -46,7 +46,6 @@ from .fork_types import (
     Withdrawal,
     decode_transaction,
     encode_transaction,
-    InclusionListSummaryEntry
 )
 from .state import (
     State,
@@ -421,7 +420,7 @@ def apply_body(
     transactions: Tuple[Union[LegacyTransaction, Bytes], ...],
     chain_id: U64,
     withdrawals: Tuple[Withdrawal, ...],
-    inclusion_list_summary: Tuple[InclusionListSummaryEntry, ...],
+    inclusion_list_summary: Tuple[Address, ...],
 ) -> Tuple[Uint, Root, Root, Bloom, State, Root, Root, Root]:
     """
     Executes a block.
@@ -461,6 +460,8 @@ def apply_body(
         ID of the executing chain.
     withdrawals :
         Withdrawals to be processed in the current block.
+    inclusion_list_summary :
+        List of addresses in the inclusion list.
 
     Returns
     -------
@@ -496,10 +497,10 @@ def apply_body(
     # Recover parent transaction addresses from the state
     parent_transactions_addresses = get_parent_transactions_addresses_system_call(state, system_tx_env)
     # Filter out IL addresses already included in the parent
-    inclusion_list_summary = [entry for entry in inclusion_list_summary 
-                              if entry.address not in parent_transactions_addresses]
+    inclusion_list_summary = [addr for addr in inclusion_list_summary
+                              if addr not in parent_transactions_addresses]
     # Construct a map of addresses required.
-    inclusion_list_addresses = {entry.address: False for entry in inclusion_list_summary}
+    inclusion_list_addresses = {addr : False for addr in inclusion_list_summary}
 
     gas_available = block_gas_limit
     il_gas_available = INCLUSION_LIST_GAS
@@ -581,8 +582,8 @@ def apply_body(
             destroy_account(state, wd.address)
 
     # If any inclusion list addresses are not satisfied, the block is invalid.
-    for entry in inclusion_list_addresses:
-        if inclusion_list_addresses[entry] is False:
+    for addr in inclusion_list_addresses:
+        if inclusion_list_addresses[addr] is False:
             raise InvalidBlock
 
     set_parent_transactions_addresses_system_call(state, set_parent_transactions_addresses_calldata, system_tx_env)

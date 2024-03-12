@@ -187,15 +187,6 @@ class Withdrawal:
 
 @slotted_freezable
 @dataclass
-class InclusionListSummaryEntry:
-    """
-    Inclusion list entries that have been validated on the consensus layer.
-    """
-
-    address: Address
-
-@slotted_freezable
-@dataclass
 class Header:
     """
     Header portion of a block on the chain.
@@ -232,7 +223,7 @@ class Block:
     transactions: Tuple[Union[Bytes, LegacyTransaction], ...]
     ommers: Tuple[Header, ...]
     withdrawals: Tuple[Withdrawal, ...]
-    inclusion_list_summary: Tuple[InclusionListSummaryEntry, ...]  # [New in EIP7547]
+    inclusion_list_summary: Tuple[Address, ...]  # [New in EIP7547]
 
 
 @slotted_freezable
