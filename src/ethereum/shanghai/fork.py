@@ -548,7 +548,7 @@ def apply_body(
         if sender_address in inclusion_list_addresses:
             # Mark this address as satisfied
             inclusion_list_addresses[sender_address] = True
-            # Subtract gas used in the IL transaction.
+            # Subtract gas used in the transaction from the IL limit.
             il_gas_available -= gas_used
             if il_gas_available < 0:
                 raise InvalidBlock
