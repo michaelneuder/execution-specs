@@ -471,7 +471,7 @@ def apply_body(
         State after all transactions have been executed.
     """
     # Construct a map of addresses required.
-    inclusion_list_addresses = {entry.address : False for entry in inclusion_list_summary}
+    inclusion_list_nonces = {entry.address : 0 for entry in inclusion_list_summary}
 
     gas_available = block_gas_limit
     il_gas_available = INCLUSION_LIST_GAS
@@ -514,9 +514,9 @@ def apply_body(
 
         gas_used, logs, error = process_transaction(env, tx)
 
-        if sender_address in inclusion_list_addresses:
+        if sender_address in inclusion_list_nonces:
             # Mark this address as satisfied
-            inclusion_list_addresses[sender_address] = True
+            inclusion_list_nonces[sender_address] = tx.nonce
             # Subtract gas used in the transaction from the IL limit.
             il_gas_available -= gas_used
             if il_gas_available < 0:
@@ -551,8 +551,9 @@ def apply_body(
             destroy_account(state, wd.address)
 
     # If any inclusion list addresses are not satisfied, the block is invalid.
-    for addr in inclusion_list_addresses:
-        if inclusion_list_addresses[addr] is False:
+    for addr in inclusion_list_nonces:
+        sender_account = get_account(env.state, addr)
+        if inclusion_list_nonces[addr] < sender_account.nonce:
             raise InvalidBlock
 
     return (
