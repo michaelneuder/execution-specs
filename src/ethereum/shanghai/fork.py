@@ -473,8 +473,8 @@ def apply_body(
     # Construct a map of addresses required.
     inclusion_list_nonces = {entry.address : 0 for entry in inclusion_list_summary}
 
-    gas_available = block_gas_limit
     il_gas_available = INCLUSION_LIST_GAS
+    gas_available = block_gas_limit + il_gas_available
 
     transactions_trie: Trie[
         Bytes, Optional[Union[Bytes, LegacyTransaction]]
@@ -538,7 +538,7 @@ def apply_body(
         set_parent_transactions_addresses_calldata += sender_address
         block_logs += logs
 
-    block_gas_used = block_gas_limit - gas_available
+    block_gas_used = block_gas_limit - gas_available - il_gas_available
 
     block_logs_bloom = logs_bloom(block_logs)
 
