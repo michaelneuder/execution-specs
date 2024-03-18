@@ -212,6 +212,24 @@ class Header:
     inclusion_list_summary_root: Root     # [New in EIP7547]
 
 
+@dataclass
+class InclusionListSummaryEntry:
+    """
+    A commitment to an address and nonce pair.
+    """
+    address: Address
+    nonce: U64
+
+@dataclass
+class InclusionListSummary:
+    """
+    Full inclusion list summary.
+    """
+    slot: U64
+    proposer_index: U64
+    parent_hash: Hash32
+    summary: Tuple[InclusionListSummaryEntry, ...]
+
 @slotted_freezable
 @dataclass
 class Block:
@@ -223,7 +241,7 @@ class Block:
     transactions: Tuple[Union[Bytes, LegacyTransaction], ...]
     ommers: Tuple[Header, ...]
     withdrawals: Tuple[Withdrawal, ...]
-    inclusion_list_summary: Tuple[Address, ...]  # [New in EIP7547]
+    inclusion_list_summary: InclusionListSummary  # [New in EIP7547]
 
 
 @slotted_freezable

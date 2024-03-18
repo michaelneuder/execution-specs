@@ -38,6 +38,7 @@ from .fork_types import (
     Bloom,
     FeeMarketTransaction,
     Header,
+    InclusionListSummary,
     LegacyTransaction,
     Log,
     Receipt,
@@ -58,23 +59,16 @@ from .state import (
     state_root,
 )
 from .trie import Trie, root, trie_set
-from .utils.hexadecimal import hex_to_address
 from .utils.message import prepare_message
-from .vm import Message, Evm
 from .vm.gas import init_code_cost
-from .vm.interpreter import MAX_CODE_SIZE, process_message_call, process_message
+from .vm.interpreter import MAX_CODE_SIZE, process_message_call
 
 BASE_FEE_MAX_CHANGE_DENOMINATOR = 8
 ELASTICITY_MULTIPLIER = 2
 GAS_LIMIT_ADJUSTMENT_FACTOR = 1024
 GAS_LIMIT_MINIMUM = 5000
-INCLUSION_LIST_GAS = 3000000 # 3mm gas for the IL
+INCLUSION_LIST_GAS = 4194304 # 2^22 gas for the IL (to start)
 EMPTY_OMMER_HASH = keccak256(rlp.encode([]))
-SYSTEM_ADDRESS = hex_to_address("0xfffffffffffffffffffffffffffffffffffffffe")
-PARENT_TRANSACTIONS_ADDRESSES_ADDRESS = hex_to_address(
-    "tbd_system_contract_address"
-)
-SYSTEM_TRANSACTION_GAS = Uint(30000000)
 
 
 @dataclass
@@ -86,7 +80,6 @@ class BlockChain:
     blocks: List[Block]
     state: State
     chain_id: U64
-
 
 def apply_fork(old: BlockChain) -> BlockChain:
     """
@@ -420,7 +413,7 @@ def apply_body(
     transactions: Tuple[Union[LegacyTransaction, Bytes], ...],
     chain_id: U64,
     withdrawals: Tuple[Withdrawal, ...],
-    inclusion_list_summary: Tuple[Address, ...],
+    inclusion_list_summary: InclusionListSummary,
 ) -> Tuple[Uint, Root, Root, Bloom, State, Root, Root, Root]:
     """
     Executes a block.
@@ -461,7 +454,7 @@ def apply_body(
     withdrawals :
         Withdrawals to be processed in the current block.
     inclusion_list_summary :
-        List of addresses in the inclusion list.
+        Summary entries that must be satisfied in the block.
 
     Returns
     -------
@@ -477,30 +470,8 @@ def apply_body(
     state : `ethereum.fork_types.State`
         State after all transactions have been executed.
     """
-    # To be used both by parent beacon block root and parent transaction addresses system calls
-    system_tx_env = vm.Environment(
-        caller=SYSTEM_ADDRESS,
-        origin=SYSTEM_ADDRESS,
-        block_hashes=block_hashes,
-        coinbase=coinbase,
-        number=block_number,
-        gas_limit=block_gas_limit,
-        base_fee_per_gas=base_fee_per_gas,
-        gas_price=base_fee_per_gas,
-        time=block_time,
-        prev_randao=prev_randao,
-        state=state,
-        chain_id=chain_id,
-        traces=[],
-    )
-
-    # Recover parent transaction addresses from the state
-    parent_transactions_addresses = get_parent_transactions_addresses_system_call(state, system_tx_env)
-    # Filter out IL addresses already included in the parent
-    inclusion_list_summary = [addr for addr in inclusion_list_summary
-                              if addr not in parent_transactions_addresses]
     # Construct a map of addresses required.
-    inclusion_list_addresses = {addr : False for addr in inclusion_list_summary}
+    inclusion_list_addresses = {entry.address : False for entry in inclusion_list_summary}
 
     gas_available = block_gas_limit
     il_gas_available = INCLUSION_LIST_GAS
@@ -515,8 +486,6 @@ def apply_body(
         secured=False, default=None
     )
     block_logs: Tuple[Log, ...] = ()
-
-    set_parent_transactions_addresses_calldata: Bytes = Uint(len(transactions)).to_be_bytes32()
 
     for i, tx in enumerate(map(decode_transaction, transactions)):
         trie_set(
@@ -585,8 +554,6 @@ def apply_body(
     for addr in inclusion_list_addresses:
         if inclusion_list_addresses[addr] is False:
             raise InvalidBlock
-
-    set_parent_transactions_addresses_system_call(state, set_parent_transactions_addresses_calldata, system_tx_env)
 
     return (
         block_gas_used,
@@ -1038,35 +1005,3 @@ def check_gas_limit(gas_limit: Uint, parent_gas_limit: Uint) -> bool:
         return False
 
     return True
-
-def parent_transactions_addresses_system_call(state: State, data: Bytes, system_tx_env: vm.Environment) -> Evm:
-    parent_transactions_addresses_contract_code = get_account(
-        state, PARENT_TRANSACTIONS_ADDRESSES_ADDRESS
-    ).code
-
-    system_tx_message = Message(
-        caller=SYSTEM_ADDRESS,
-        target=PARENT_TRANSACTIONS_ADDRESSES_ADDRESS,
-        gas=SYSTEM_TRANSACTION_GAS,
-        value=U256(0),
-        data=data,
-        code=parent_transactions_addresses_contract_code,
-        depth=Uint(0),
-        current_target=PARENT_TRANSACTIONS_ADDRESSES_ADDRESS,
-        code_address=PARENT_TRANSACTIONS_ADDRESSES_ADDRESS,
-        should_transfer_value=False,
-        is_static=False,
-        accessed_addresses=set(),
-        accessed_storage_keys=set(),
-        parent_evm=None,
-    )
-
-    return process_message(system_tx_message, system_tx_env) 
-
-
-def get_parent_transactions_addresses_system_call(state: State, system_tx_env: vm.Environment) -> List[Address]:
-    evm = parent_transactions_addresses_system_call(state=state, data=b'', system_tx_env=system_tx_env)
-    return [Address(evm.output[i:i+20]) for i in range(0, len(evm.output) // 20)]
-
-def set_parent_transactions_addresses_system_call(state: State, data: Bytes, system_tx_env: vm.Environment) -> None:
-    parent_transactions_addresses_system_call(state=state, data=data, system_tx_env=system_tx_env)
