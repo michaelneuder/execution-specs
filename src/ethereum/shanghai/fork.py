@@ -38,6 +38,7 @@ from .fork_types import (
     Bloom,
     FeeMarketTransaction,
     Header,
+    InclusionListSummary,
     LegacyTransaction,
     Log,
     Receipt,
@@ -66,6 +67,7 @@ BASE_FEE_MAX_CHANGE_DENOMINATOR = 8
 ELASTICITY_MULTIPLIER = 2
 GAS_LIMIT_ADJUSTMENT_FACTOR = 1024
 GAS_LIMIT_MINIMUM = 5000
+INCLUSION_LIST_GAS = 4194304 # 2^22 gas for the IL (to start)
 EMPTY_OMMER_HASH = keccak256(rlp.encode([]))
 
 
@@ -78,7 +80,6 @@ class BlockChain:
     blocks: List[Block]
     state: State
     chain_id: U64
-
 
 def apply_fork(old: BlockChain) -> BlockChain:
     """
@@ -186,6 +187,7 @@ def state_transition(chain: BlockChain, block: Block) -> None:
         block.transactions,
         chain.chain_id,
         block.withdrawals,
+        block.inclusion_list_summary,
     )
     ensure(gas_used == block.header.gas_used, InvalidBlock)
     ensure(transactions_root == block.header.transactions_root, InvalidBlock)
@@ -411,7 +413,8 @@ def apply_body(
     transactions: Tuple[Union[LegacyTransaction, Bytes], ...],
     chain_id: U64,
     withdrawals: Tuple[Withdrawal, ...],
-) -> Tuple[Uint, Root, Root, Bloom, State, Root]:
+    inclusion_list_summary: InclusionListSummary,
+) -> Tuple[Uint, Root, Root, Bloom, State, Root, Root, Root]:
     """
     Executes a block.
 
@@ -450,6 +453,8 @@ def apply_body(
         ID of the executing chain.
     withdrawals :
         Withdrawals to be processed in the current block.
+    inclusion_list_summary :
+        Summary entries that must be satisfied in the block.
 
     Returns
     -------
@@ -465,7 +470,15 @@ def apply_body(
     state : `ethereum.fork_types.State`
         State after all transactions have been executed.
     """
-    gas_available = block_gas_limit
+    if inclusion_list_summary.parent_hash != block_hashes[-1]:
+        raise InvalidBlock
+
+    # Construct a map of addresses required.
+    inclusion_list_nonces = {entry.address : 0 for entry in inclusion_list_summary}
+
+    il_gas_available = INCLUSION_LIST_GAS
+    gas_available = block_gas_limit + il_gas_available
+
     transactions_trie: Trie[
         Bytes, Optional[Union[Bytes, LegacyTransaction]]
     ] = Trie(secured=False, default=None)
@@ -503,7 +516,17 @@ def apply_body(
         )
 
         gas_used, logs, error = process_transaction(env, tx)
-        gas_available -= gas_used
+
+        if sender_address in inclusion_list_nonces:
+            # Mark this address as satisfied
+            inclusion_list_nonces[sender_address] = tx.nonce
+            # Subtract gas used in the transaction from the IL limit.
+            il_gas_available -= gas_used
+            if il_gas_available < 0:
+                raise InvalidBlock
+        else:
+            # Otherwise subtract from main gas limit of the block.
+            gas_available -= gas_used
 
         receipt = make_receipt(
             tx, error, (block_gas_limit - gas_available), logs
@@ -515,9 +538,10 @@ def apply_body(
             receipt,
         )
 
+        set_parent_transactions_addresses_calldata += sender_address
         block_logs += logs
 
-    block_gas_used = block_gas_limit - gas_available
+    block_gas_used = block_gas_limit - gas_available - il_gas_available
 
     block_logs_bloom = logs_bloom(block_logs)
 
@@ -528,6 +552,12 @@ def apply_body(
 
         if account_exists_and_is_empty(state, wd.address):
             destroy_account(state, wd.address)
+
+    # If any inclusion list addresses are not satisfied, the block is invalid.
+    for addr in inclusion_list_nonces:
+        sender_account = get_account(env.state, addr)
+        if inclusion_list_nonces[addr] < sender_account.nonce:
+            raise InvalidBlock
 
     return (
         block_gas_used,
