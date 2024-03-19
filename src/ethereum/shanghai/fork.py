@@ -470,6 +470,9 @@ def apply_body(
     state : `ethereum.fork_types.State`
         State after all transactions have been executed.
     """
+    if inclusion_list_summary.parent_hash != block_hashes[-1]:
+        raise InvalidBlock
+
     # Construct a map of addresses required.
     inclusion_list_nonces = {entry.address : 0 for entry in inclusion_list_summary}
 
